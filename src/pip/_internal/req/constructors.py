@@ -334,6 +334,11 @@ def install_req_from_req_string(
             "%s depends on %s " % (comes_from.name, req)
         )
 
+    if req.url:
+        return install_req_from_line(
+            req.url, comes_from=comes_from, isolated=isolated,
+            wheel_cache=wheel_cache
+        )
     return InstallRequirement(
         req, comes_from, isolated=isolated, wheel_cache=wheel_cache,
         use_pep517=use_pep517
