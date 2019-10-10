@@ -1,0 +1,37 @@
+parameters:
+  vmImage:
+
+jobs:
+- job: Package
+  dependsOn:
+    - Test_Primary
+    - Test_Secondary
+  pool:
+    vmImage: ${{ parameters.vmImage }}
+
+  steps:
+  - task: UsePythonVersion@0
+    displayName: Use Python 3 latest
+    inputs:
+      versionSpec: '3'
+
+  - bash: pip install twine nox setuptools wheel
+    displayName: Install dependencies
+
+  - bash: nox -s generate_authors
+    displayName: Generate AUTHORS.txt
+
+  - bash: nox -s generate_news -- --yes
+    displayName: Generate NEWS.rst
+
+  - bash: python setup.py sdist bdist_wheel
+    displayName: Create sdist and wheel
+
+  - bash: twine check dist/*
+    displayName: Check distributions with twine
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish Artifact: dist'
+    inputs:
+      pathtoPublish: dist
+      artifactName: dist

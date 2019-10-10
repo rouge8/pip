@@ -1,13 +1,12 @@
 import os
 import re
-import sys
 import subprocess
-from os.path import dirname, abspath
+import sys
+from os.path import abspath, dirname
 
 from pip._vendor.six.moves.urllib import request as urllib_request
 
-from pip.utils import rmtree
-
+from pip._internal.utils.misc import rmtree
 
 src_folder = dirname(dirname(abspath(__file__)))
 
@@ -18,7 +17,7 @@ else:
 
 
 def all_projects():
-    data = urllib_request.urlopen('http://pypi.python.org/simple/').read()
+    data = urllib_request.urlopen('http://pypi.org/simple/').read()
     projects = [m.group(1) for m in re.finditer(r'<a.*?>(.+)</a>', data)]
     return projects
 
@@ -38,10 +37,9 @@ def main(args=None):
         print('Downloading pending list')
         projects = all_projects()
         print('Found %s projects' % len(projects))
-        f = open(pending_fn, 'w')
-        for name in projects:
-            f.write(name + '\n')
-        f.close()
+        with open(pending_fn, 'w') as f:
+            for name in projects:
+                f.write(name + '\n')
     print('Starting testing...')
     while os.stat(pending_fn).st_size:
         _test_packages(output, pending_fn)
