@@ -4,9 +4,9 @@ from contextlib import contextmanager
 import pytest
 
 import pip._internal.configuration
-from pip._internal import main
-from pip._internal.commands import ConfigurationCommand, DownloadCommand
+from pip._internal.commands import create_command
 from pip._internal.exceptions import PipError
+from pip._internal.main import main
 from tests.lib.options_helpers import AddFakeCommandMixin
 
 
@@ -193,7 +193,7 @@ class TestUsePEP517Options(object):
     def parse_args(self, args):
         # We use DownloadCommand since that is one of the few Command
         # classes with the use_pep517 options.
-        command = DownloadCommand()
+        command = create_command('download')
         options, args = command.parse_args(args)
 
         return options
@@ -384,9 +384,10 @@ class TestGeneralOptions(AddFakeCommandMixin):
 class TestOptionsConfigFiles(object):
 
     def test_venv_config_file_found(self, monkeypatch):
-        # strict limit on the global_config_files list
+        # strict limit on the global config files list
         monkeypatch.setattr(
-            pip._internal.configuration, 'global_config_files', ['/a/place']
+            pip._internal.utils.appdirs, 'site_config_dirs',
+            lambda _: ['/a/place']
         )
 
         cp = pip._internal.configuration.Configuration(isolated=False)
@@ -410,7 +411,7 @@ class TestOptionsConfigFiles(object):
         )
     )
     def test_config_file_options(self, monkeypatch, args, expect):
-        cmd = ConfigurationCommand()
+        cmd = create_command('config')
         # Replace a handler with a no-op to avoid side effects
         monkeypatch.setattr(cmd, "get_name", lambda *a: None)
 
@@ -420,26 +421,3 @@ class TestOptionsConfigFiles(object):
                 cmd._determine_file(options, need_value=False)
         else:
             assert expect == cmd._determine_file(options, need_value=False)
-
-    def test_config_file_venv_option(self, monkeypatch):
-        cmd = ConfigurationCommand()
-        # Replace a handler with a no-op to avoid side effects
-        monkeypatch.setattr(cmd, "get_name", lambda *a: None)
-
-        collected_warnings = []
-
-        def _warn(message, *a, **kw):
-            collected_warnings.append(message)
-        monkeypatch.setattr("warnings.warn", _warn)
-
-        options, args = cmd.parser.parse_args(["--venv", "get", "name"])
-        assert "site" == cmd._determine_file(options, need_value=False)
-        assert collected_warnings
-        assert "--site" in collected_warnings[0]
-
-        # No warning or error if both "--venv" and "--site" are specified
-        collected_warnings[:] = []
-        options, args = cmd.parser.parse_args(["--venv", "--site", "get",
-                                               "name"])
-        assert "site" == cmd._determine_file(options, need_value=False)
-        assert not collected_warnings

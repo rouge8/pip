@@ -10,11 +10,14 @@ from pip._vendor.packaging.requirements import Requirement
 
 from pip._internal import pep425tags, wheel
 from pip._internal.exceptions import InvalidWheelFilename, UnsupportedWheel
-from pip._internal.index import FormatControl
 from pip._internal.models.link import Link
 from pip._internal.req.req_install import InstallRequirement
 from pip._internal.utils.compat import WINDOWS
-from pip._internal.utils.misc import unpack_file
+from pip._internal.utils.unpacking import unpack_file
+from pip._internal.wheel import (
+    MissingCallableSuffix,
+    _raise_for_invalid_entrypoint,
+)
 from tests.lib import DATA_DIR, assert_paths_equal
 
 
@@ -68,11 +71,20 @@ def make_test_install_req(base_name=None):
     return req
 
 
+@pytest.mark.parametrize('file_tag, expected', [
+    (('py27', 'none', 'any'), 'py27-none-any'),
+    (('cp33', 'cp32dmu', 'linux_x86_64'), 'cp33-cp32dmu-linux_x86_64'),
+])
+def test_format_tag(file_tag, expected):
+    actual = wheel.format_tag(file_tag)
+    assert actual == expected
+
+
 @pytest.mark.parametrize(
-    "base_name, autobuilding, cache_available, expected",
+    "base_name, should_unpack, cache_available, expected",
     [
         ('pendulum-2.0.4', False, False, False),
-        # The following cases test autobuilding=True.
+        # The following cases test should_unpack=True.
         # Test _contains_egg_info() returning True.
         ('pendulum-2.0.4', True, True, False),
         ('pendulum-2.0.4', True, False, True),
@@ -82,19 +94,60 @@ def make_test_install_req(base_name=None):
     ],
 )
 def test_should_use_ephemeral_cache__issue_6197(
-    base_name, autobuilding, cache_available, expected,
+    base_name, should_unpack, cache_available, expected,
 ):
     """
     Regression test for: https://github.com/pypa/pip/issues/6197
     """
     req = make_test_install_req(base_name=base_name)
     assert not req.is_wheel
-    assert req.link.is_artifact
+    assert not req.link.is_vcs
 
-    format_control = FormatControl()
+    always_true = Mock(return_value=True)
+
     ephem_cache = wheel.should_use_ephemeral_cache(
-        req, format_control=format_control, autobuilding=autobuilding,
-        cache_available=cache_available,
+        req, should_unpack=should_unpack,
+        cache_available=cache_available, check_binary_allowed=always_true,
+    )
+    assert ephem_cache is expected
+
+
+@pytest.mark.parametrize(
+    "disallow_binaries, expected",
+    [
+        # By default (i.e. when binaries are allowed), VCS requirements
+        # should be built.
+        (False, True),
+        # Disallowing binaries, however, should cause them not to be built.
+        (True, None),
+    ],
+)
+def test_should_use_ephemeral_cache__disallow_binaries_and_vcs_checkout(
+    disallow_binaries, expected,
+):
+    """
+    Test that disallowing binaries (e.g. from passing --global-option)
+    causes should_use_ephemeral_cache() to return None for VCS checkouts.
+    """
+    req = Requirement('pendulum')
+    link = Link(url='git+https://git.example.com/pendulum.git')
+    req = InstallRequirement(
+        req=req,
+        comes_from=None,
+        constraint=False,
+        editable=False,
+        link=link,
+        source_dir='/tmp/pip-install-9py5m2z1/pendulum',
+    )
+    assert not req.is_wheel
+    assert req.link.is_vcs
+
+    check_binary_allowed = Mock(return_value=not disallow_binaries)
+
+    # The cache_available value doesn't matter for this test.
+    ephem_cache = wheel.should_use_ephemeral_cache(
+        req, should_unpack=True,
+        cache_available=True, check_binary_allowed=check_binary_allowed,
     )
     assert ephem_cache is expected
 
@@ -165,6 +218,7 @@ def test_get_legacy_build_wheel_path(caplog):
 
 
 def test_get_legacy_build_wheel_path__no_names(caplog):
+    caplog.set_level(logging.INFO)
     actual = call_get_legacy_build_wheel_path(caplog, names=[])
     assert actual is None
     assert len(caplog.records) == 1
@@ -178,6 +232,7 @@ def test_get_legacy_build_wheel_path__no_names(caplog):
 
 
 def test_get_legacy_build_wheel_path__multiple_names(caplog):
+    caplog.set_level(logging.INFO)
     # Deliberately pass the names in non-sorted order.
     actual = call_get_legacy_build_wheel_path(
         caplog, names=['name2', 'name1'],
@@ -198,7 +253,7 @@ def test_get_legacy_build_wheel_path__multiple_names(caplog):
                          ["pip = pip._internal.main:pip",
                           "pip:pip = pip._internal.main:pip"])
 def test_get_entrypoints(tmpdir, console_scripts):
-    entry_points = tmpdir.join("entry_points.txt")
+    entry_points = tmpdir.joinpath("entry_points.txt")
     with open(str(entry_points), "w") as fp:
         fp.write("""
             [console_scripts]
@@ -212,6 +267,19 @@ def test_get_entrypoints(tmpdir, console_scripts):
         dict([console_scripts.split(' = ')]),
         {},
     )
+
+
+def test_raise_for_invalid_entrypoint_ok():
+    _raise_for_invalid_entrypoint("hello = hello:main")
+
+
+@pytest.mark.parametrize("entrypoint", [
+    "hello = hello",
+    "hello = hello:",
+])
+def test_raise_for_invalid_entrypoint_fail(entrypoint):
+    with pytest.raises(MissingCallableSuffix):
+        _raise_for_invalid_entrypoint(entrypoint)
 
 
 @pytest.mark.parametrize("outrows, expected", [
@@ -238,8 +306,8 @@ def test_sorted_outrows(outrows, expected):
 
 
 def call_get_csv_rows_for_installed(tmpdir, text):
-    path = tmpdir.join('temp.txt')
-    path.write(text)
+    path = tmpdir.joinpath('temp.txt')
+    path.write_text(text)
 
     # Test that an installed file appearing in RECORD has its filename
     # updated in the new RECORD file.
@@ -301,10 +369,8 @@ def test_wheel_version(tmpdir, data):
     broken_wheel = 'brokenwheel-1.0-py2.py3-none-any.whl'
     future_version = (1, 9)
 
-    unpack_file(data.packages.join(future_wheel),
-                tmpdir + 'future', None, None)
-    unpack_file(data.packages.join(broken_wheel),
-                tmpdir + 'broken', None, None)
+    unpack_file(data.packages.joinpath(future_wheel), tmpdir + 'future')
+    unpack_file(data.packages.joinpath(broken_wheel), tmpdir + 'broken')
 
     assert wheel.wheel_version(tmpdir + 'future') == future_version
     assert not wheel.wheel_version(tmpdir + 'broken')
@@ -514,38 +580,30 @@ class TestWheelFile(object):
         w = wheel.Wheel('simple-0.1-py2-none-TEST.whl')
         assert w.support_index_min(tags=tags) == 0
 
-    def test_support_index_min_none(self):
+    def test_support_index_min__none_supported(self):
         """
-        Test `support_index_min` returns None, when wheel not supported
+        Test a wheel not supported by the given tags.
         """
         w = wheel.Wheel('simple-0.1-py2-none-any.whl')
-        assert w.support_index_min(tags=[]) is None
+        with pytest.raises(ValueError):
+            w.support_index_min(tags=[])
 
-    def test_unpack_wheel_no_flatten(self):
-        from pip._internal.utils import misc as utils
-        from tempfile import mkdtemp
-        from shutil import rmtree
-
+    def test_unpack_wheel_no_flatten(self, tmpdir):
         filepath = os.path.join(DATA_DIR, 'packages',
                                 'meta-1.0-py2.py3-none-any.whl')
-        try:
-            tmpdir = mkdtemp()
-            utils.unpack_file(filepath, tmpdir, 'application/zip', None)
-            assert os.path.isdir(os.path.join(tmpdir, 'meta-1.0.dist-info'))
-        finally:
-            rmtree(tmpdir)
-            pass
+        unpack_file(filepath, tmpdir)
+        assert os.path.isdir(os.path.join(tmpdir, 'meta-1.0.dist-info'))
 
     def test_purelib_platlib(self, data):
         """
         Test the "wheel is purelib/platlib" code.
         """
         packages = [
-            ("pure_wheel", data.packages.join("pure_wheel-1.7"), True),
-            ("plat_wheel", data.packages.join("plat_wheel-1.7"), False),
-            ("pure_wheel", data.packages.join(
+            ("pure_wheel", data.packages.joinpath("pure_wheel-1.7"), True),
+            ("plat_wheel", data.packages.joinpath("plat_wheel-1.7"), False),
+            ("pure_wheel", data.packages.joinpath(
                 "pure_wheel-_invalidversion_"), True),
-            ("plat_wheel", data.packages.join(
+            ("plat_wheel", data.packages.joinpath(
                 "plat_wheel-_invalidversion_"), False),
         ]
 
@@ -568,12 +626,12 @@ class TestMoveWheelFiles(object):
 
     def prep(self, data, tmpdir):
         self.name = 'sample'
-        self.wheelpath = data.packages.join(
+        self.wheelpath = data.packages.joinpath(
             'sample-1.2.0-py2.py3-none-any.whl')
         self.req = Requirement('sample')
         self.src = os.path.join(tmpdir, 'src')
         self.dest = os.path.join(tmpdir, 'dest')
-        unpack_file(self.wheelpath, self.src, None, None)
+        unpack_file(self.wheelpath, self.src)
         self.scheme = {
             'scripts': os.path.join(self.dest, 'bin'),
             'purelib': os.path.join(self.dest, 'lib'),
@@ -644,10 +702,11 @@ class TestWheelBuilder(object):
                 as mock_build_one:
             wheel_req = Mock(is_wheel=True, editable=False, constraint=False)
             wb = wheel.WheelBuilder(
-                finder=Mock(), preparer=Mock(), wheel_cache=None,
+                preparer=Mock(),
+                wheel_cache=Mock(cache_dir=None),
             )
             with caplog.at_level(logging.INFO):
-                wb.build([wheel_req], session=Mock())
+                wb.build([wheel_req])
             assert "due to already being wheel" in caplog.text
             assert mock_build_one.mock_calls == []
 
@@ -763,3 +822,29 @@ class TestMessageAboutScriptsNotOnPATH(object):
             retval_empty = wheel.message_about_scripts_not_on_PATH(scripts)
 
         assert retval_missing == retval_empty
+
+
+class TestWheelHashCalculators(object):
+
+    def prep(self, tmpdir):
+        self.test_file = tmpdir.joinpath("hash.file")
+        # Want this big enough to trigger the internal read loops.
+        self.test_file_len = 2 * 1024 * 1024
+        with open(str(self.test_file), "w") as fp:
+            fp.truncate(self.test_file_len)
+        self.test_file_hash = \
+            '5647f05ec18958947d32874eeb788fa396a05d0bab7c1b71f112ceb7e9b31eee'
+        self.test_file_hash_encoded = \
+            'sha256=VkfwXsGJWJR9ModO63iPo5agXQurfBtx8RLOt-mzHu4'
+
+    def test_hash_file(self, tmpdir):
+        self.prep(tmpdir)
+        h, length = wheel.hash_file(self.test_file)
+        assert length == self.test_file_len
+        assert h.hexdigest() == self.test_file_hash
+
+    def test_rehash(self, tmpdir):
+        self.prep(tmpdir)
+        h, length = wheel.rehash(self.test_file)
+        assert length == str(self.test_file_len)
+        assert h == self.test_file_hash_encoded

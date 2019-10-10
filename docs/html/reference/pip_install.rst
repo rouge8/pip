@@ -71,8 +71,12 @@ the chosen version is available, it is assumed that any source is acceptable
 Installation Order
 ++++++++++++++++++
 
+.. note::
+   This section is only about installation order of runtime dependencies, and
+   does not apply to build dependencies (those are specified using PEP 518).
+
 As of v6.1.0, pip installs dependencies before their dependents, i.e. in
-"topological order".  This is the only commitment pip currently makes related
+"topological order."  This is the only commitment pip currently makes related
 to order.  While it may be coincidentally true that pip will install things in
 the order of the install arguments or in the order of the items in a
 requirements file, this is not a promise.
@@ -153,8 +157,10 @@ The following options are supported:
   *  :ref:`--no-binary <install_--no-binary>`
   *  :ref:`--only-binary <install_--only-binary>`
   *  :ref:`--require-hashes <--require-hashes>`
+  *  :ref:`--trusted-host <--trusted-host>`
 
-For example, to specify :ref:`--no-index <--no-index>` and 2 :ref:`--find-links <--find-links>` locations:
+For example, to specify :ref:`--no-index <--no-index>` and two
+:ref:`--find-links <--find-links>` locations:
 
 ::
 
@@ -238,8 +244,7 @@ pip supports installing from a package index using a :term:`requirement
 specifier <pypug:Requirement Specifier>`. Generally speaking, a requirement
 specifier is composed of a project name followed by optional :term:`version
 specifiers <pypug:Version Specifier>`.  :pep:`508` contains a full specification
-of the format of a requirement (``pip`` does not support the ``url_req`` form
-of specifier at this time).
+of the format of a requirement.
 
 Some examples:
 
@@ -258,6 +263,13 @@ Since version 6.0, pip also supports specifiers containing `environment markers
 
   SomeProject ==5.4 ; python_version < '2.7'
   SomeProject; sys_platform == 'win32'
+
+Since version 19.1, pip also supports `direct references
+<https://www.python.org/dev/peps/pep-0440/#direct-references>`__ like so:
+
+ ::
+
+  SomeProject @ file:///somewhere/...
 
 Environment markers are supported in the command line and in requirements files.
 
@@ -331,32 +343,35 @@ VCS Support
 +++++++++++
 
 pip supports installing from Git, Mercurial, Subversion and Bazaar, and detects
-the type of VCS using url prefixes: "git+", "hg+", "bzr+", "svn+".
+the type of VCS using URL prefixes: ``git+``, ``hg+``, ``svn+``, and ``bzr+``.
 
-pip requires a working VCS command on your path: git, hg, svn, or bzr.
+pip requires a working VCS command on your path: ``git``, ``hg``, ``svn``, or
+``bzr``.
 
 VCS projects can be installed in :ref:`editable mode <editable-installs>` (using
 the :ref:`--editable <install_--editable>` option) or not.
 
-* For editable installs, the clone location by default is "<venv
-  path>/src/SomeProject" in virtual environments, and "<cwd>/src/SomeProject"
+* For editable installs, the clone location by default is ``<venv
+  path>/src/SomeProject`` in virtual environments, and
+  ``<cwd>/src/SomeProject``
   for global installs.  The :ref:`--src <install_--src>` option can be used to
   modify this location.
 * For non-editable installs, the project is built locally in a temp dir and then
   installed normally. Note that if a satisfactory version of the package is
-  already installed, the VCS source will not overwrite it without an `--upgrade`
-  flag. VCS requirements pin the package version (specified in the `setup.py`
-  file) of the target commit, not necessarily the commit itself.
+  already installed, the VCS source will not overwrite it without an
+  ``--upgrade`` flag. VCS requirements pin the package version (specified
+  in the ``setup.py`` file) of the target commit, not necessarily the commit
+  itself.
 * The :ref:`pip freeze` subcommand will record the VCS requirement specifier
   (referencing a specific commit) if and only if the install is done using the
   editable option.
 
-The "project name" component of the url suffix "egg=<project name>"
+The "project name" component of the URL suffix ``egg=<project name>``
 is used by pip in its dependency logic to identify the project prior
 to pip downloading and analyzing the metadata. For projects
-where setup.py is not in the root of project, "subdirectory" component
-is used. Value of "subdirectory" component should be a path starting from root
-of the project to where setup.py is located.
+where ``setup.py`` is not in the root of project, the "subdirectory" component
+is used. The value of the "subdirectory" component should be a path starting
+from the root of the project to where ``setup.py`` is located.
 
 So if your repository layout is:
 
@@ -388,11 +403,12 @@ Here are the supported forms::
     [-e] git+file:///home/user/projects/MyProject#egg=MyProject
     -e git+git@git.example.com:MyProject#egg=MyProject
 
-Passing branch names, a commit hash or a tag name is possible like so::
+Passing a branch name, a commit hash, a tag name or a git ref is possible like so::
 
     [-e] git://git.example.com/MyProject.git@master#egg=MyProject
     [-e] git://git.example.com/MyProject.git@v1.0#egg=MyProject
     [-e] git://git.example.com/MyProject.git@da39a3ee5e6b4b0d3255bfef95601890afd80709#egg=MyProject
+    [-e] git://git.example.com/MyProject.git@refs/pull/123/head#egg=MyProject
 
 When passing a commit hash, specifying a full hash is preferable to a partial
 hash because a full hash allows pip to operate more efficiently (e.g. by
@@ -401,8 +417,8 @@ making fewer network calls).
 Mercurial
 ~~~~~~~~~
 
-The supported schemes are: ``hg+http``, ``hg+https``,
-``hg+static-http`` and ``hg+ssh``.
+The supported schemes are: ``hg+file``, ``hg+http``, ``hg+https``,
+``hg+static-http``, and ``hg+ssh``.
 
 Here are the supported forms::
 
@@ -478,16 +494,17 @@ Finding Packages
 ++++++++++++++++
 
 pip searches for packages on `PyPI`_ using the
-`http simple interface <https://pypi.org/simple/>`_,
+`HTTP simple interface <https://pypi.org/simple/>`_,
 which is documented `here <https://setuptools.readthedocs.io/en/latest/easy_install.html#package-index-api>`_
-and `there <https://www.python.org/dev/peps/pep-0301/>`_
+and `there <https://www.python.org/dev/peps/pep-0301/>`_.
 
-pip offers a number of Package Index Options for modifying how packages are found.
+pip offers a number of package index options for modifying how packages are
+found.
 
-pip looks for packages in a number of places, on PyPI (if not disabled via
-```--no-index```), in the local filesystem, and in any additional repositories
-specified via ```--find-links``` or ```--index-url```. There is no ordering in
-the locations that are searched, rather they are all checked, and the "best"
+pip looks for packages in a number of places: on PyPI (if not disabled via
+``--no-index``), in the local filesystem, and in any additional repositories
+specified via ``--find-links`` or ``--index-url``. There is no ordering in
+the locations that are searched. Rather they are all checked, and the "best"
 match for the requirements (in terms of version number - see :pep:`440` for
 details) is selected.
 
@@ -555,7 +572,7 @@ each sdist that wheels are built from and places the resulting wheels inside.
 
 Pip attempts to choose the best wheels from those built in preference to
 building a new wheel. Note that this means when a package has both optional
-C extensions and builds `py` tagged wheels when the C extension can't be built
+C extensions and builds ``py`` tagged wheels when the C extension can't be built
 that pip will not attempt to build a better wheel for Pythons that would have
 supported it, once any generic wheel is built. To correct this, make sure that
 the wheels are built with Python specific tags - e.g. pp on PyPy.
@@ -683,10 +700,21 @@ does not satisfy the ``--require-hashes`` demand that every package have a
 local hash.
 
 
+Local project installs
+++++++++++++++++++++++
+pip supports installing local project in both regular mode and editable mode.
+You can install local projects by specifying the project path to pip::
+
+$ pip install path/to/SomeProject
+
+During regular installation, pip will copy the entire project directory to a temporary location and install from there.
+The exception is that pip will exclude .tox and .nox directories present in the top level of the project from being copied.
+
+
 .. _`editable-installs`:
 
 "Editable" Installs
-+++++++++++++++++++
+~~~~~~~~~~~~~~~~~~~
 
 "Editable" installs are fundamentally `"setuptools develop mode"
 <https://setuptools.readthedocs.io/en/latest/setuptools.html#development-mode>`_
@@ -711,12 +739,12 @@ Controlling setup_requires
 
 Setuptools offers the ``setup_requires`` `setup() keyword
 <https://setuptools.readthedocs.io/en/latest/setuptools.html#new-and-changed-setup-keywords>`_
-for specifying dependencies that need to be present in order for the `setup.py`
-script to run.  Internally, Setuptools uses ``easy_install`` to fulfill these
-dependencies.
+for specifying dependencies that need to be present in order for the
+``setup.py`` script to run.  Internally, Setuptools uses ``easy_install``
+to fulfill these dependencies.
 
 pip has no way to control how these dependencies are located.  None of the
-Package Index Options have an effect.
+package index options have an effect.
 
 The solution is to configure a "system" or "personal" `Distutils configuration
 file
@@ -798,7 +826,7 @@ Options
 Examples
 ********
 
-#. Install `SomePackage` and its dependencies from `PyPI`_ using :ref:`Requirement Specifiers`
+#. Install ``SomePackage`` and its dependencies from `PyPI`_ using :ref:`Requirement Specifiers`
 
     ::
 
@@ -814,7 +842,7 @@ Examples
       $ pip install -r requirements.txt
 
 
-#. Upgrade an already installed `SomePackage` to the latest from PyPI.
+#. Upgrade an already installed ``SomePackage`` to the latest from PyPI.
 
     ::
 
@@ -845,8 +873,8 @@ Examples
 
       $ pip install SomePackage[PDF]
       $ pip install git+https://git.repo/some_pkg.git#egg=SomePackage[PDF]
+      $ pip install .[PDF]  # project in current directory
       $ pip install SomePackage[PDF]==3.0
-      $ pip install -e .[PDF]==3.0  # editable project in current directory
       $ pip install SomePackage[PDF,EPUB]  # multiple extras
 
 
@@ -856,6 +884,14 @@ Examples
 
       $ pip install ./downloads/SomePackage-1.0.4.tar.gz
       $ pip install http://my.package.repo/SomePackage-1.0.4.zip
+
+
+#. Install a particular source archive file following :pep:`440` direct references.
+
+    ::
+
+      $ pip install SomeProject==1.0.4@http://my.package.repo//SomeProject-1.2.3-py33-none-any.whl
+      $ pip install "SomeProject==1.0.4 @ http://my.package.repo//SomeProject-1.2.3-py33-none-any.whl"
 
 
 #. Install from alternative package repositories.

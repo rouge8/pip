@@ -10,7 +10,7 @@ import pytest
 import six
 from setuptools.wheel import Wheel
 
-import pip._internal
+from pip._internal.main import main as pip_entry_point
 from tests.lib import DATA_DIR, SRC_DIR, TestData
 from tests.lib.path import Path
 from tests.lib.scripttest import PipTestEnvironment
@@ -74,7 +74,7 @@ def tmpdir_factory(request, tmpdir_factory):
         tmpdir_factory.getbasetemp().remove(ignore_errors=True)
 
 
-@pytest.yield_fixture
+@pytest.fixture
 def tmpdir(request, tmpdir):
     """
     Return a temporary directory path object which is unique to each test
@@ -169,22 +169,28 @@ def isolate(tmpdir):
 @pytest.fixture(scope='session')
 def pip_src(tmpdir_factory):
     def not_code_files_and_folders(path, names):
-        # In the root directory, ignore all folders except "src"
+        # In the root directory...
         if path == SRC_DIR:
+            # ignore all folders except "src"
             folders = {name for name in names if os.path.isdir(path / name)}
-            return folders - {"src"}
+            to_ignore = folders - {"src"}
+            # and ignore ".git" if present (which may be a file if in a linked
+            # worktree).
+            if ".git" in names:
+                to_ignore.add(".git")
+            return to_ignore
 
         # Ignore all compiled files and egg-info.
-        ignored = list()
-        for pattern in ["__pycache__", "*.pyc", "pip.egg-info"]:
-            ignored.extend(fnmatch.filter(names, pattern))
-        return set(ignored)
+        ignored = set()
+        for pattern in ("__pycache__", "*.pyc", "pip.egg-info"):
+            ignored.update(fnmatch.filter(names, pattern))
+        return ignored
 
-    pip_src = Path(str(tmpdir_factory.mktemp('pip_src'))).join('pip_src')
+    pip_src = Path(str(tmpdir_factory.mktemp('pip_src'))).joinpath('pip_src')
     # Copy over our source tree so that each use is self contained
     shutil.copytree(
         SRC_DIR,
-        pip_src.abspath,
+        pip_src.resolve(),
         ignore=not_code_files_and_folders,
     )
     return pip_src
@@ -216,12 +222,12 @@ def wheel_install(tmpdir_factory, common_wheels):
 
 def install_egg_link(venv, project_name, egg_info_dir):
     with open(venv.site / 'easy-install.pth', 'a') as fp:
-        fp.write(str(egg_info_dir.abspath) + '\n')
+        fp.write(str(egg_info_dir.resolve()) + '\n')
     with open(venv.site / (project_name + '.egg-link'), 'w') as fp:
         fp.write(str(egg_info_dir) + '\n.')
 
 
-@pytest.yield_fixture(scope='session')
+@pytest.fixture(scope='session')
 def virtualenv_template(request, tmpdir_factory, pip_src,
                         setuptools_install, common_wheels):
 
@@ -232,12 +238,14 @@ def virtualenv_template(request, tmpdir_factory, pip_src,
 
     # Create the virtual environment
     tmpdir = Path(str(tmpdir_factory.mktemp('virtualenv')))
-    venv = VirtualEnvironment(tmpdir.join("venv_orig"), venv_type=venv_type)
+    venv = VirtualEnvironment(
+        tmpdir.joinpath("venv_orig"), venv_type=venv_type
+    )
 
     # Install setuptools and pip.
     install_egg_link(venv, 'setuptools', setuptools_install)
     pip_editable = Path(str(tmpdir_factory.mktemp('pip'))) / 'pip'
-    pip_src.copytree(pip_editable)
+    shutil.copytree(pip_src, pip_editable, symlinks=True)
     assert compileall.compile_dir(str(pip_editable), quiet=1)
     subprocess.check_call([venv.bin / 'python', 'setup.py', '-q', 'develop'],
                           cwd=pip_editable)
@@ -248,7 +256,7 @@ def virtualenv_template(request, tmpdir_factory, pip_src,
             exe.startswith('python') or
             exe.startswith('libpy')  # Don't remove libpypy-c.so...
         ):
-            (venv.bin / exe).remove()
+            (venv.bin / exe).unlink()
 
     # Enable user site packages.
     venv.user_site_packages = True
@@ -260,7 +268,7 @@ def virtualenv_template(request, tmpdir_factory, pip_src,
     yield venv
 
 
-@pytest.yield_fixture
+@pytest.fixture
 def virtualenv(virtualenv_template, tmpdir, isolate):
     """
     Return a virtual environment which is unique to each test function
@@ -268,7 +276,7 @@ def virtualenv(virtualenv_template, tmpdir, isolate):
     temporary directory. The returned object is a
     ``tests.lib.venv.VirtualEnvironment`` object.
     """
-    venv_location = tmpdir.join("workspace", "venv")
+    venv_location = tmpdir.joinpath("workspace", "venv")
     yield VirtualEnvironment(venv_location, virtualenv_template)
 
 
@@ -287,7 +295,7 @@ def script(tmpdir, virtualenv, deprecated_python):
     """
     return PipTestEnvironment(
         # The base location for our test environment
-        tmpdir.join("workspace"),
+        tmpdir.joinpath("workspace"),
 
         # Tell the Test Environment where our virtualenv is located
         virtualenv=virtualenv,
@@ -311,12 +319,12 @@ def script(tmpdir, virtualenv, deprecated_python):
 @pytest.fixture(scope="session")
 def common_wheels():
     """Provide a directory with latest setuptools and wheel wheels"""
-    return DATA_DIR.join('common_wheels')
+    return DATA_DIR.joinpath('common_wheels')
 
 
 @pytest.fixture
 def data(tmpdir):
-    return TestData.copy(tmpdir.join("data"))
+    return TestData.copy(tmpdir.joinpath("data"))
 
 
 class InMemoryPipResult(object):
@@ -334,7 +342,7 @@ class InMemoryPip(object):
             stdout = io.BytesIO()
         sys.stdout = stdout
         try:
-            returncode = pip._internal.main(list(args))
+            returncode = pip_entry_point(list(args))
         except SystemExit as e:
             returncode = e.code or 0
         finally:
@@ -350,4 +358,4 @@ def in_memory_pip():
 @pytest.fixture
 def deprecated_python():
     """Used to indicate whether pip deprecated this python version"""
-    return sys.version_info[:2] in [(3, 4), (2, 7)]
+    return sys.version_info[:2] in [(2, 7)]

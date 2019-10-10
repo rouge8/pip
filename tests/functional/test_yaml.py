@@ -56,10 +56,14 @@ def handle_install_request(script, requirement):
     result = script.pip(
         "install",
         "--no-index", "--find-links", path_to_url(script.scratch_path),
-        requirement
+        requirement, "--verbose",
+        allow_stderr_error=True,
+        allow_stderr_warning=True,
     )
 
-    retval = {}
+    retval = {
+        "_result_object": result,
+    }
     if result.returncode == 0:
         # Check which packages got installed
         retval["install"] = []
@@ -99,7 +103,7 @@ def handle_install_request(script, requirement):
 
 @pytest.mark.yaml
 @pytest.mark.parametrize(
-    "case", generate_yaml_tests(DATA_DIR.folder / "yaml"), ids=id_func
+    "case", generate_yaml_tests(DATA_DIR.parent / "yaml"), ids=id_func
 )
 def test_yaml_based(script, case):
     available = case.get("available", [])
@@ -140,4 +144,7 @@ def test_yaml_based(script, case):
         # Perform the requested action
         effect = available_actions[action](script, request[action])
 
-        assert effect == expected, "Fixture did not succeed."
+        result = effect["_result_object"]
+        del effect["_result_object"]
+
+        assert effect == expected, str(result)

@@ -57,6 +57,21 @@ their merits.
   ``pip._internal.utils.deprecation.deprecated``. The function is not a part of
   pip's public API.
 
+Python 2 support
+----------------
+
+pip will continue to ensure that it runs on Python 2.7 after the CPython 2.7
+EOL date. Support for Python 2.7 will be dropped, if bugs in Python 2.7 itself
+make this necessary (which is unlikely) or Python 2 usage reduces to a level
+where pip maintainers feel it is OK to drop support. The same approach is used
+to determine when to drop support for other Python versions.
+
+However, bugs reported with pip which only occur on Python 2.7 would likely not
+be addressed directly by pip's maintainers. Pull Requests to fix Python 2.7
+only bugs will be considered, and merged (subject to normal review processes).
+Note that there may be delays due to the lack of developer resources for
+reviewing such pull requests.
+
 
 Release Process
 ===============
@@ -65,14 +80,13 @@ Creating a new release
 ----------------------
 
 #. Checkout the current pip ``master`` branch.
-#. Ensure you have the latest ``wheel``, ``setuptools``, ``twine``, ``invoke``
-   and ``towncrier`` packages installed.
-#. Generate a new ``AUTHORS.txt`` (``invoke generate.authors``) and commit the
+#. Ensure you have the latest ``wheel``, ``setuptools``, ``twine`` and ``nox`` packages installed.
+#. Generate a new ``AUTHORS.txt`` (``nox -s generate_authors``) and commit the
    results.
 #. Bump the version in ``pip/__init__.py`` to the release version and commit
    the results. Usually this involves dropping just the ``.devN`` suffix on the
    version.
-#. Generate a new ``NEWS.rst`` (``invoke generate.news``) and commit the
+#. Generate a new ``NEWS.rst`` (``nox -s generate_news``) and commit the
    results.
 #. Create a tag at the current commit, of the form ``YY.N``
    (``git tag YY.N``).

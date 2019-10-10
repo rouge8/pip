@@ -1,3 +1,6 @@
+# The following comment should be removed at some point in the future.
+# mypy: disallow-untyped-defs=False
+
 import codecs
 import os
 import re
@@ -46,7 +49,6 @@ setup(
         "Programming Language :: Python :: 2",
         "Programming Language :: Python :: 2.7",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.4",
         "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
@@ -72,12 +74,12 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "pip=pip._internal:main",
-            "pip%s=pip._internal:main" % sys.version_info[:1],
-            "pip%s.%s=pip._internal:main" % sys.version_info[:2],
+            "pip=pip._internal.main:main",
+            "pip%s=pip._internal.main:main" % sys.version_info[:1],
+            "pip%s.%s=pip._internal.main:main" % sys.version_info[:2],
         ],
     },
 
     zip_safe=False,
-    python_requires='>=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*',
+    python_requires='>=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*',
 )

@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# Short circuit tests and linting jobs if there are no code changes involved.
-if [[ $TOXENV != docs ]]; then
+# Short circuit test runs if there are no code changes involved.
+if [[ $TOXENV != docs ]] || [[ $TOXENV != lint ]]; then
     if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]
     then
         echo "This is not a PR -- will do a complete build."
@@ -17,7 +17,7 @@ if [[ $TOXENV != docs ]]; then
         echo "$changes"
         if ! echo "$changes" | grep -qvE '(\.rst$)|(^docs)|(^news)|(^\.github)'
         then
-            echo "Only Documentation was updated -- skipping build."
+            echo "Code was not changed -- skipping build."
             exit
         fi
     fi
