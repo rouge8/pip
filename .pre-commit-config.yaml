@@ -2,7 +2,7 @@ exclude: 'src/pip/_vendor/'
 
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v2.3.0
+  rev: v3.4.0
   hooks:
   - id: check-builtin-literals
   - id: check-added-large-files
@@ -18,14 +18,14 @@ repos:
   - id: trailing-whitespace
     exclude: .patch
 
-- repo: https://github.com/timothycrosley/isort
-  rev: 4.3.21
+- repo: https://github.com/PyCQA/isort
+  rev: 5.6.4
   hooks:
   - id: isort
     files: \.py$
 
 - repo: https://github.com/pre-commit/mirrors-mypy
-  rev: v0.730
+  rev: v0.790
   hooks:
   - id: mypy
     exclude: docs|tests
@@ -36,7 +36,7 @@ repos:
     args: ["-2"]
 
 - repo: https://github.com/pre-commit/pygrep-hooks
-  rev: v1.4.1
+  rev: v1.7.0
   hooks:
   - id: python-no-log-warn
   - id: python-no-eval
@@ -48,6 +48,6 @@ repos:
     exclude: NEWS.rst
 
 - repo: https://github.com/mgedmin/check-manifest
-  rev: '0.39'
+  rev: '0.45'
   hooks:
   - id: check-manifest
